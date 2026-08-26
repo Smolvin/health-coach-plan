@@ -8,6 +8,14 @@
 
 _(пока пусто)_
 
+## [0.5.0] — 2026-08-26 07:52 IST
+### Added
+- Каркас Telegram-бота на Node.js + [Telegraf](https://telegraf.js.org/): `src/bot.js`, `src/config.js`, `.env.example`.
+### Changed
+- `.gitignore`: добавлен `.env` (секрет — токен бота).
+### Note
+- Бот пока отвечает только на `/start`/`/help`; сценарий анкеты из 15 вопросов не реализован. Не запускался локально — на машине разработки нет Node.js.
+
 ## [0.4.0] — 2026-08-26 06:46 IST
 ### Changed
 - Персональные данные клиентов вычищены из публичных `docs/decisions-log.md` и `docs/todo.md` — контекст сохранён, перенесён в приватные `clients/<slug-клиента>/decisions-log.md` и `clients/<slug-клиента>/todo.md` (папка `clients/` в `.gitignore`).

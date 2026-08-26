@@ -1,13 +1,25 @@
 {
   "name": "health-coach-plan",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": true,
-  "description": "Персональный проект: анкетирование клиентов, программы тренировок и планы питания. Версия растёт по мере доработки проекта.",
-  "scripts": {},
+  "description": "Персональный проект: анкетирование клиентов, программы тренировок и планы питания. Работает через Telegram-бота. Версия растёт по мере доработки проекта.",
+  "main": "src/bot.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node src/bot.js",
+    "dev": "node --watch src/bot.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "telegraf": "^4.16.3"
+  },
   "keywords": [
     "fitness",
     "nutrition",
     "training-plan",
-    "diet-plan"
+    "diet-plan",
+    "telegram-bot"
   ]
 }

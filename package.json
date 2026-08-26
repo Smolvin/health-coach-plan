@@ -1,0 +1,13 @@
+{
+  "name": "health-coach-plan",
+  "version": "0.4.0",
+  "private": true,
+  "description": "Персональный проект: анкетирование клиентов, программы тренировок и планы питания. Версия растёт по мере доработки проекта.",
+  "scripts": {},
+  "keywords": [
+    "fitness",
+    "nutrition",
+    "training-plan",
+    "diet-plan"
+  ]
+}

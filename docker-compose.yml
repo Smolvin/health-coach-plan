@@ -1,0 +1,38 @@
+services:
+  bot:
+    build: .
+    env_file: .env
+    restart: unless-stopped
+    # Позволяет обратиться к MySQL, установленному прямо на хост-машине
+    # (сценарий "отдельный инстанс на машину"), через DB_HOST=host.docker.internal.
+    # На Docker Desktop (Mac/Windows) это имя уже работает само по себе,
+    # запись ниже нужна для Docker на Linux.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # Локальная, полностью независимая от других проектов MySQL — только для разработки.
+  # Не стартует по умолчанию, чтобы не мешать сценарию с MySQL на VPS/машине.
+  # Запуск: docker compose --profile local-db up --build
+  mysql:
+    image: mysql:8.4
+    profiles: ["local-db"]
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-change-me}
+      MYSQL_DATABASE: ${DB_NAME:-health}
+      MYSQL_USER: ${DB_USER:-health}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-health}
+    ports:
+      # Отдельный порт (не 3306), чтобы не конфликтовать с MySQL, уже
+      # установленным на машине. Внутри docker-сети бот стучится на mysql:3306.
+      - "${DB_LOCAL_PORT:-3307}:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  mysql-data:

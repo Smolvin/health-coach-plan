@@ -8,6 +8,15 @@
 
 _(пока пусто)_
 
+## [0.6.0] — 2026-08-26 08:03 IST
+### Added
+- `Dockerfile` и `docker-compose.yml` — бот в контейнере, опциональный локальный MySQL за Compose-профилем `local-db`.
+- `src/db.js` — пул соединений MySQL (`mysql2`).
+- Единый `.env` для подключения к MySQL в любом из трёх сценариев: локальный контейнер проекта, MySQL на машине разработчика, MySQL на VPS — без изменений кода, только значения `DB_HOST`/`DB_PORT`/`DB_SSL` и т.п.
+- npm-скрипты `docker:up`, `docker:up:local-db`, `docker:down`.
+### Note
+- Подключение к БД пока не используется кодом бота — задел на будущее. Docker-образ не собирался и не запускался — на машине разработки не был поднят демон Docker.
+
 ## [0.5.0] — 2026-08-26 07:52 IST
 ### Added
 - Каркас Telegram-бота на Node.js + [Telegraf](https://telegraf.js.org/): `src/bot.js`, `src/config.js`, `.env.example`.

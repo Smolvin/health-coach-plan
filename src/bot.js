@@ -1,6 +1,10 @@
 const { Telegraf } = require('telegraf');
 const { BOT_TOKEN } = require('./config');
 
+if (!BOT_TOKEN) {
+  throw new Error('BOT_TOKEN не задан. Скопируй .env.example в .env и укажи токен бота от @BotFather.');
+}
+
 const bot = new Telegraf(BOT_TOKEN);
 
 bot.start((ctx) => {

@@ -1,10 +1,9 @@
 require('dotenv').config();
 
+// BOT_TOKEN не проверяется здесь: config.js используется и скриптами, которым
+// он не нужен (например, scripts/check-db.js) — проверка в src/bot.js, перед
+// запуском самого бота.
 const BOT_TOKEN = process.env.BOT_TOKEN;
-
-if (!BOT_TOKEN) {
-  throw new Error('BOT_TOKEN не задан. Скопируй .env.example в .env и укажи токен бота от @BotFather.');
-}
 
 // Один конфиг для любого MySQL: локальный контейнер этого проекта, MySQL на машине
 // или удалённый сервер на VPS — просто разные значения DB_HOST/DB_PORT в .env.

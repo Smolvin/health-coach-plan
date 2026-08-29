@@ -23,12 +23,24 @@ async function getClassByCode(code) {
 }
 
 // added_by нужен, чтобы позже можно было проверить "своё фото" при классификации.
-async function addPhoto({ gymId, photoFileId, name, addedBy }) {
+// photoFileId — из Telegram (поштучная загрузка через бота); sourceFile — имя
+// исходного файла при массовом импорте (scripts/import_media.js). Ровно одно
+// из двух обычно заполнено, но оба необязательны на уровне схемы.
+async function addPhoto({ gymId, photoFileId = null, sourceFile = null, name, addedBy }) {
   const [result] = await pool.query(
-    'INSERT INTO gym_equipment (gym_id, photo_file_id, name, added_by) VALUES (?, ?, ?, ?)',
-    [gymId, photoFileId, name || null, addedBy]
+    'INSERT INTO gym_equipment (gym_id, photo_file_id, source_file, name, added_by) VALUES (?, ?, ?, ?, ?)',
+    [gymId, photoFileId, sourceFile, name || null, addedBy]
   );
   return result.insertId;
+}
+
+// Для идемпотентности импорта из папки — не тащить один и тот же файл дважды.
+async function findBySourceFile(gymId, sourceFile) {
+  const [rows] = await pool.query('SELECT id FROM gym_equipment WHERE gym_id = ? AND source_file = ?', [
+    gymId,
+    sourceFile,
+  ]);
+  return rows[0] || null;
 }
 
 async function listGymEquipment(gymId) {
@@ -64,4 +76,13 @@ async function classify(id, classId, name) {
   ]);
 }
 
-module.exports = { createClass, listClasses, getClassByCode, addPhoto, listGymEquipment, getEquipment, classify };
+module.exports = {
+  createClass,
+  listClasses,
+  getClassByCode,
+  addPhoto,
+  findBySourceFile,
+  listGymEquipment,
+  getEquipment,
+  classify,
+};

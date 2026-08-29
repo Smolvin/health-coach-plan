@@ -639,6 +639,7 @@ app.get(
       }
     }
 
+    if (!item.photo_file_id) return res.status(404).send('Фото недоступно (нет ни MinIO-копии, ни Telegram file_id)');
     if (!telegram) return res.status(503).send('Ни MinIO, ни BOT_TOKEN не настроены — фото недоступно');
 
     let fileLink;

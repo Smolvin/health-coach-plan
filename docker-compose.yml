@@ -14,6 +14,10 @@ services:
     networks:
       - default
       - local_shared
+    # Папка для массового импорта медиа (scripts/import_media.js) — read-only,
+    # чтобы скрипт не мог случайно что-то поменять в исходных файлах на хосте.
+    volumes:
+      - ${IMPORT_ASSETS_DIR:-/Users/Shared/assets}:/import:ro
 
   # Веб-админка: список клиентов/анкет, редактирование вопросов анкеты без
   # прямого SQL. Тот же образ, что и bot, просто другая команда запуска.

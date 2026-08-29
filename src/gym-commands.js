@@ -4,6 +4,7 @@
 const { getAdmin } = require('./admins');
 const { listGyms, getGym } = require('./gyms');
 const { listClasses, createClass, getClassByCode, listGymEquipment, getEquipment, classify } = require('./equipment');
+const { getMediaForEquipment, streamObject } = require('./media');
 const { CREATE_GYM_SCENE_ID, ADD_EQUIPMENT_SCENE_ID } = require('./gym-scenes');
 
 function formatDate(value) {
@@ -60,7 +61,19 @@ function registerGymCommands(bot) {
     const caption =
       `#${item.id} ${item.name || ''} — зал «${item.gym_name}»` +
       (item.class_name ? `\nКласс: ${item.class_name}` : '\nНе классифицировано');
-    return ctx.replyWithPhoto(item.photo_file_id, { caption });
+
+    // У фото из Telegram есть свой file_id — им проще всего переслать назад.
+    // У фото, пришедшего через массовый импорт (scripts/import_media.js),
+    // file_id нет — берём байты из MinIO и шлём как обычное вложение.
+    if (item.photo_file_id) {
+      return ctx.replyWithPhoto(item.photo_file_id, { caption });
+    }
+    const mediaRow = await getMediaForEquipment(item.id);
+    if (!mediaRow) return ctx.reply('У этой записи нет фото.');
+    const stream = await streamObject(mediaRow.minio_key);
+    const chunks = [];
+    for await (const chunk of stream) chunks.push(chunk);
+    return ctx.replyWithPhoto({ source: Buffer.concat(chunks) }, { caption });
   });
 
   bot.command('classes', async (ctx) => {

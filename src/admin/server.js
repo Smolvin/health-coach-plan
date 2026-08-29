@@ -12,6 +12,7 @@ const groups = require('../groups');
 const audit = require('../audit');
 const gyms = require('../gyms');
 const equipment = require('../equipment');
+const media = require('../media');
 
 // Только для перезапроса файлов фото у Telegram API (getFileLink) — веб-админка
 // сама с ботом не общается и обновлений не получает, только скачивает файлы.
@@ -615,15 +616,30 @@ app.post(
   })
 );
 
-// Фото хранится в Telegram, не у нас — сервер проксирует байты через себя,
-// чтобы не отдавать в HTML прямую ссылку с токеном бота (getFileLink его содержит).
+// Фото сначала ищем в MinIO (постоянная копия, gym_media) — это быстрее и не
+// зависит от Telegram. Если копии ещё нет (старое фото, MinIO был недоступен
+// в момент загрузки) — откатываемся на прокси через Telegram getFileLink; сам
+// файл в HTML не отдаём напрямую, там был бы токен бота открытым текстом.
 app.get(
   '/gyms/:gymId/equipment/:id/photo',
   wrapErrors(async (req, res) => {
-    if (!telegram) return res.status(503).send('BOT_TOKEN не настроен — фото недоступны');
-
     const item = await equipment.getEquipment(req.params.id);
     if (!item || String(item.gym_id) !== req.params.gymId) return res.status(404).send('Не найдено');
+
+    const mediaRow = await media.getMediaForEquipment(item.id);
+    if (mediaRow) {
+      try {
+        const stream = await media.streamObject(mediaRow.minio_key);
+        res.set('Content-Type', mediaRow.content_type || 'image/jpeg');
+        res.set('Cache-Control', 'private, max-age=3600');
+        return stream.pipe(res);
+      } catch (err) {
+        console.error(`Не удалось прочитать объект ${mediaRow.minio_key} из MinIO:`, err.message);
+        // падаем на Telegram ниже
+      }
+    }
+
+    if (!telegram) return res.status(503).send('Ни MinIO, ни BOT_TOKEN не настроены — фото недоступно');
 
     let fileLink;
     try {

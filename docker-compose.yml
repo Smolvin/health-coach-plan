@@ -9,6 +9,11 @@ services:
     # запись ниже нужна для Docker на Linux.
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    # local_shared — внешняя сеть, где живёт общий MinIO (см. .env MINIO_*);
+    # default сохраняем явно, иначе Compose перестанет её подключать сама.
+    networks:
+      - default
+      - local_shared
 
   # Веб-админка: список клиентов/анкет, редактирование вопросов анкеты без
   # прямого SQL. Тот же образ, что и bot, просто другая команда запуска.
@@ -21,6 +26,9 @@ services:
       - "${ADMIN_PORT:-4000}:${ADMIN_PORT:-4000}"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    networks:
+      - default
+      - local_shared
 
   # Локальная, полностью независимая от других проектов MySQL — только для разработки.
   # Не стартует по умолчанию, чтобы не мешать сценарию с MySQL на VPS/машине.
@@ -48,3 +56,10 @@ services:
 
 volumes:
   mysql-data:
+
+networks:
+  # Сеть общего MinIO (проект vps_local на этой же машине) — должна уже
+  # существовать (её создаёт docker-compose того проекта); мы только
+  # подключаемся, не управляем её жизненным циклом.
+  local_shared:
+    external: true

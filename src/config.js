@@ -31,4 +31,15 @@ const ADMIN_WEB = {
   password: process.env.ADMIN_WEB_PASSWORD || '',
 };
 
-module.exports = { BOT_TOKEN, DB, OWNER_TELEGRAM_ID, ADMIN_WEB };
+// Хранилище фото залов/оборудования (S3-совместимое, MinIO). Своего файлового
+// стораджа у проекта нет — используется общий MinIO инстанс, см. .env.example.
+const MINIO = {
+  endPoint: process.env.MINIO_ENDPOINT || 'minio',
+  port: Number(process.env.MINIO_PORT) || 9000,
+  useSSL: process.env.MINIO_USE_SSL === 'true',
+  accessKey: process.env.MINIO_ACCESS_KEY || '',
+  secretKey: process.env.MINIO_SECRET_KEY || '',
+  bucket: process.env.MINIO_BUCKET || 'health-coach-plan',
+};
+
+module.exports = { BOT_TOKEN, DB, OWNER_TELEGRAM_ID, ADMIN_WEB, MINIO };

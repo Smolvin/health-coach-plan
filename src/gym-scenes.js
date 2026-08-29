@@ -3,6 +3,7 @@
 const { Scenes, Markup } = require('telegraf');
 const { createGym } = require('./gyms');
 const { addPhoto } = require('./equipment');
+const { ensureGymFolder, uploadEquipmentPhoto } = require('./media');
 
 const CREATE_GYM_SCENE_ID = 'create_gym';
 const ADD_EQUIPMENT_SCENE_ID = 'add_equipment';
@@ -38,6 +39,7 @@ createGymScene.on('text', async (ctx) => {
     if (text === 'Типовой') {
       state.type = 'template';
       const gymId = await createGym({ name: state.name, type: 'template', location: null, createdBy: ctx.from.id });
+      await ensureGymFolder(gymId).catch((err) => console.error('Не удалось создать папку зала в MinIO:', err.message));
       await ctx.reply(
         `Готово! Зал «${state.name}» создан (#${gymId}, типовой). Добавить оборудование: /addequipment ${gymId}`,
         Markup.removeKeyboard()
@@ -50,6 +52,7 @@ createGymScene.on('text', async (ctx) => {
   if (state.step === 'location') {
     state.location = text;
     const gymId = await createGym({ name: state.name, type: 'location', location: state.location, createdBy: ctx.from.id });
+    await ensureGymFolder(gymId).catch((err) => console.error('Не удалось создать папку зала в MinIO:', err.message));
     await ctx.reply(`Готово! Зал «${state.name}» создан (#${gymId}, ${state.location}). Добавить оборудование: /addequipment ${gymId}`);
     return ctx.scene.leave();
   }
@@ -67,14 +70,35 @@ addEquipmentScene.on('photo', async (ctx) => {
   const state = ctx.scene.state;
   const photos = ctx.message.photo;
   const best = photos[photos.length - 1]; // последний элемент — самое высокое разрешение
+  const caption = ctx.message.caption ? ctx.message.caption.trim() : null;
+
   const equipmentId = await addPhoto({
     gymId: state.gymId,
     photoFileId: best.file_id,
-    name: ctx.message.caption ? ctx.message.caption.trim() : null,
+    name: caption,
     addedBy: ctx.from.id,
   });
+
+  let minioNote = '';
+  try {
+    const fileLink = await ctx.telegram.getFileLink(best.file_id);
+    const response = await fetch(fileLink.href || fileLink.toString());
+    const buffer = Buffer.from(await response.arrayBuffer());
+    await uploadEquipmentPhoto({
+      gymId: state.gymId,
+      equipmentId,
+      buffer,
+      contentType: response.headers.get('content-type') || 'image/jpeg',
+      telegramFileId: best.file_id,
+      uploadedBy: ctx.from.id,
+    });
+  } catch (err) {
+    console.error('Не удалось скопировать фото в MinIO:', err.message);
+    minioNote = ' (в постоянное хранилище не скопировалось, но в Telegram сохранено)';
+  }
+
   ctx.reply(
-    `Сохранено как #${equipmentId}${ctx.message.caption ? ` («${ctx.message.caption.trim()}»)` : ''}. ` +
+    `Сохранено как #${equipmentId}${caption ? ` («${caption}»)` : ''}${minioNote}. ` +
       `Классифицировать: /classifyequipment ${equipmentId} <код класса>. Присылай следующее фото или /done.`
   );
 });

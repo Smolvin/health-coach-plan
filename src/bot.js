@@ -1,7 +1,9 @@
 const { Telegraf, Scenes, session, Markup } = require('telegraf');
-const { BOT_TOKEN } = require('./config');
+const { BOT_TOKEN, OWNER_TELEGRAM_ID } = require('./config');
 const pool = require('./db');
 const { listStrategies, getQuestions } = require('./survey');
+const { ensureOwner } = require('./admins');
+const { registerAdminCommands } = require('./admin-commands');
 
 const ONBOARDING_SCENE_ID = 'onboarding';
 
@@ -205,11 +207,23 @@ bot.use(stage.middleware());
 bot.start((ctx) => ctx.scene.enter(ONBOARDING_SCENE_ID));
 
 bot.help((ctx) => {
-  ctx.reply('Команды:\n/start — начать анкету\n/help — эта справка');
+  ctx.reply(
+    'Команды:\n/start — начать анкету\n/help — эта справка\n/whoami — узнать свой Telegram ID\n\n' +
+      'Для админов: /stats, /clients, /admins, /addadmin, /removeadmin'
+  );
 });
 
-bot.launch();
-console.log('Бот запущен (long polling).');
+registerAdminCommands(bot);
+
+ensureOwner(OWNER_TELEGRAM_ID)
+  .then(() => {
+    bot.launch();
+    console.log('Бот запущен (long polling).');
+  })
+  .catch((err) => {
+    console.error('Не удалось запустить бота:', err);
+    process.exit(1);
+  });
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));

@@ -10,6 +10,18 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
+  # Веб-админка: список клиентов/анкет, редактирование вопросов анкеты без
+  # прямого SQL. Тот же образ, что и bot, просто другая команда запуска.
+  admin:
+    build: .
+    command: ["node", "src/admin/server.js"]
+    env_file: .env
+    restart: unless-stopped
+    ports:
+      - "${ADMIN_PORT:-4000}:${ADMIN_PORT:-4000}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
   # Локальная, полностью независимая от других проектов MySQL — только для разработки.
   # Не стартует по умолчанию, чтобы не мешать сценарию с MySQL на VPS/машине.
   # Запуск: docker compose --profile local-db up --build

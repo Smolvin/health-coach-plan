@@ -17,4 +17,18 @@ const DB = {
   ssl: process.env.DB_SSL === 'true',
 };
 
-module.exports = { BOT_TOKEN, DB };
+// Telegram ID владельца проекта — при старте бота закрепляется как единственный
+// 'owner' в таблице admins (см. src/admins.js), если владелец ещё не назначен.
+// Узнать свой ID можно командой /whoami в самом боте.
+const OWNER_TELEGRAM_ID = process.env.OWNER_TELEGRAM_ID ? Number(process.env.OWNER_TELEGRAM_ID) : null;
+
+// Веб-админка (src/admin/server.js): список клиентов, редактирование анкеты.
+// Закрыта общим логином/паролем (HTTP Basic Auth) — это не то же самое, что
+// роли owner/admin в боте, отдельный вход для тех, у кого есть доступ к .env.
+const ADMIN_WEB = {
+  port: Number(process.env.ADMIN_PORT) || 4000,
+  user: process.env.ADMIN_WEB_USER || 'admin',
+  password: process.env.ADMIN_WEB_PASSWORD || '',
+};
+
+module.exports = { BOT_TOKEN, DB, OWNER_TELEGRAM_ID, ADMIN_WEB };

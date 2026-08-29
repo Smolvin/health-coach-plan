@@ -1,0 +1,100 @@
+// Минимальные HTML-хелперы для веб-админки: без шаблонизатора и фронтенд-сборки,
+// достаточно для внутреннего инструмента на несколько страниц.
+
+function escapeHtml(value) {
+  if (value === null || value === undefined) return '';
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+const NAV = [
+  ['/', 'Дашборд'],
+  ['/clients', 'Клиенты'],
+  ['/questions', 'Вопросы'],
+  ['/strategies', 'Стратегии'],
+  ['/admins', 'Админы'],
+];
+
+function layout({ title, active, body }) {
+  const nav = NAV.map(
+    ([href, label]) => `<a href="${href}"${href === active ? ' class="active"' : ''}>${label}</a>`
+  ).join('\n');
+
+  return `<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escapeHtml(title)} — Health Coach Admin</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: light-dark(#f6f5f2, #14181a);
+    color: light-dark(#1c211d, #e9ede9);
+  }
+  header {
+    display: flex; align-items: center; gap: 24px;
+    padding: 14px 24px; border-bottom: 1px solid light-dark(#e0ddd3, #262c27);
+    background: light-dark(#ffffff, #191f1b);
+  }
+  header h1 { font-size: 16px; margin: 0; white-space: nowrap; }
+  nav { display: flex; gap: 4px; flex-wrap: wrap; }
+  nav a {
+    padding: 6px 12px; border-radius: 8px; text-decoration: none;
+    color: light-dark(#3a453d, #b7c2ba); font-size: 14px;
+  }
+  nav a.active, nav a:hover { background: light-dark(#e7f2ec, #22302a); color: light-dark(#146c4c, #3fd8a3); }
+  main { padding: 24px; max-width: 980px; margin: 0 auto; }
+  h2 { font-size: 20px; margin: 0 0 16px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid light-dark(#e6e3da, #232a25); vertical-align: top; }
+  th { color: light-dark(#6b756e, #8fa196); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  tr:hover td { background: light-dark(#fafaf7, #1b211d); }
+  a { color: light-dark(#146c4c, #3fd8a3); }
+  .card {
+    background: light-dark(#ffffff, #191f1b); border: 1px solid light-dark(#e6e3da, #262c27);
+    border-radius: 12px; padding: 18px 20px; margin-bottom: 20px;
+  }
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; }
+  .stat { text-align: left; }
+  .stat .n { font-size: 28px; font-weight: 700; display: block; }
+  .stat .label { font-size: 12px; color: light-dark(#6b756e, #8fa196); text-transform: uppercase; letter-spacing: .04em; }
+  form.inline { display: inline; }
+  label { display: block; font-size: 13px; margin: 12px 0 4px; color: light-dark(#3a453d, #b7c2ba); }
+  input[type=text], input[type=number], select, textarea {
+    width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid light-dark(#d8d4c8, #2c332d);
+    background: light-dark(#fff, #10140f); color: inherit; font-size: 14px; font-family: inherit;
+  }
+  textarea { min-height: 90px; }
+  button, input[type=submit] {
+    background: light-dark(#1f8f6b, #3fd8a3); color: light-dark(#fff, #0d1a15); border: none;
+    border-radius: 8px; padding: 8px 14px; font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  button.secondary { background: transparent; color: light-dark(#146c4c, #3fd8a3); border: 1px solid light-dark(#c9e4d8, #2c332d); }
+  button.danger { background: light-dark(#c9432f, #e5674f); }
+  .pill { display: inline-block; padding: 2px 9px; border-radius: 99px; font-size: 12px; background: light-dark(#eef2ee, #20271f); }
+  .muted { color: light-dark(#6b756e, #8fa196); }
+  .actions { display: flex; gap: 8px; align-items: center; }
+  .badge-owner { color: #b8860b; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Health Coach — Админка</h1>
+  <nav>${nav}</nav>
+</header>
+<main>
+${body}
+</main>
+</body>
+</html>`;
+}
+
+module.exports = { escapeHtml, layout };

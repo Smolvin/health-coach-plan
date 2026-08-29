@@ -1,6 +1,6 @@
 {
   "name": "health-coach-plan",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "private": true,
   "description": "Персональный проект: анкетирование клиентов, программы тренировок и планы питания. Работает через Telegram-бота и MySQL, всё заворачивается в Docker. Версия растёт по мере доработки проекта.",
   "main": "src/bot.js",
@@ -10,6 +10,8 @@
   "scripts": {
     "start": "node src/bot.js",
     "dev": "node --watch src/bot.js",
+    "admin": "node src/admin/server.js",
+    "admin:dev": "node --watch src/admin/server.js",
     "db:check": "node scripts/check-db.js",
     "migrate": "node scripts/migrate.js",
     "docker:up": "docker compose up --build",
@@ -18,6 +20,7 @@
   },
   "dependencies": {
     "dotenv": "^16.4.5",
+    "express": "^4.22.2",
     "mysql2": "^3.11.0",
     "telegraf": "^4.16.3"
   },

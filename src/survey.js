@@ -39,6 +39,28 @@ async function getQuestions(strategyCode) {
   return rows.map(normalizeQuestion);
 }
 
+// Вопросы, которые есть в toCode, но которых нет в fromCode — для "расширения"
+// анкеты (например, клиент прошёл короткую, потом решил дойти до полной).
+async function getStrategyDelta(fromCode, toCode) {
+  const [rows] = await pool.query(
+    `SELECT q.id, q.code, q.question_text, q.question_type, q.options
+     FROM survey_strategy_questions sq
+     JOIN survey_questions q ON q.id = sq.question_id
+     JOIN survey_strategies s ON s.id = sq.strategy_id
+     WHERE s.code = ? AND q.active = 1
+       AND q.id NOT IN (
+         SELECT q2.id
+         FROM survey_strategy_questions sq2
+         JOIN survey_questions q2 ON q2.id = sq2.question_id
+         JOIN survey_strategies s2 ON s2.id = sq2.strategy_id
+         WHERE s2.code = ?
+       )
+     ORDER BY sq.position`,
+    [toCode, fromCode]
+  );
+  return rows.map(normalizeQuestion);
+}
+
 // Всё содержимое стратегии для админки — включая неактивные вопросы, чтобы их
 // тоже можно было увидеть/убрать из стратегии.
 async function getStrategyDetail(strategyCode) {
@@ -168,6 +190,7 @@ async function moveQuestionInStrategy(strategyCode, questionId, direction) {
 module.exports = {
   listStrategies,
   getQuestions,
+  getStrategyDelta,
   getStrategyDetail,
   listAllQuestions,
   getQuestionById,

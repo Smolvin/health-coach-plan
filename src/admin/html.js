@@ -16,7 +16,11 @@ const NAV = [
   ['/clients', 'Клиенты'],
   ['/questions', 'Вопросы'],
   ['/strategies', 'Стратегии'],
+  ['/groups', 'Группы'],
   ['/admins', 'Админы'],
+  ['/logs', 'Логи'],
+  ['/gyms', 'Залы'],
+  ['/classes', 'Классы'],
 ];
 
 function layout({ title, active, body }) {
@@ -66,7 +70,9 @@ function layout({ title, active, body }) {
   .stat { text-align: left; }
   .stat .n { font-size: 28px; font-weight: 700; display: block; }
   .stat .label { font-size: 12px; color: light-dark(#6b756e, #8fa196); text-transform: uppercase; letter-spacing: .04em; }
-  form.inline { display: inline; }
+  form.inline { display: inline-flex; align-items: center; gap: 6px; }
+  form.inline select { width: auto; padding: 4px 8px; font-size: 13px; }
+  form.inline button { padding: 4px 10px; font-size: 13px; }
   label { display: block; font-size: 13px; margin: 12px 0 4px; color: light-dark(#3a453d, #b7c2ba); }
   input[type=text], input[type=number], select, textarea {
     width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid light-dark(#d8d4c8, #2c332d);

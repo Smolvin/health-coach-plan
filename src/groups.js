@@ -23,4 +23,15 @@ async function getGroupByCode(code) {
   return rows[0] || null;
 }
 
-module.exports = { listGroups, createGroup, getGroupByCode };
+async function getGroupById(id) {
+  const [rows] = await pool.query('SELECT id, code, name FROM client_groups WHERE id = ?', [id]);
+  return rows[0] || null;
+}
+
+// Код не редактируется — на него уже могут ссылаться /setclientgroup и
+// /setadmingroup в чужих чатах/скриптах, менять его задним числом небезопасно.
+async function updateGroupName(id, name) {
+  await pool.query('UPDATE client_groups SET name = ? WHERE id = ?', [name, id]);
+}
+
+module.exports = { listGroups, createGroup, getGroupByCode, getGroupById, updateGroupName };

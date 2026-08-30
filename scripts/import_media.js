@@ -12,7 +12,7 @@
 require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
-const { getGym, createGym, listGyms } = require('../src/gyms');
+const { getGym, findOrCreateGym } = require('../src/gyms');
 const { addPhoto, findBySourceFile } = require('../src/equipment');
 const { ensureGymFolder, uploadEquipmentPhoto } = require('../src/media');
 const { OWNER_TELEGRAM_ID } = require('../src/config');
@@ -43,14 +43,9 @@ async function resolveGym(nameOrId) {
     return gym;
   }
 
-  const gyms = await listGyms();
-  const existing = gyms.find((g) => g.name.toLowerCase() === nameOrId.toLowerCase());
-  if (existing) return existing;
-
-  console.log(`Зала «${nameOrId}» нет — создаю новый (тип: location, без адреса)...`);
-  const gymId = await createGym({ name: nameOrId, type: 'location', location: null, createdBy: CLI_ACTOR_ID });
-  await ensureGymFolder(gymId);
-  return getGym(gymId);
+  const gym = await findOrCreateGym({ name: nameOrId, type: 'location', location: null, createdBy: CLI_ACTOR_ID });
+  await ensureGymFolder(gym.id);
+  return gym;
 }
 
 async function main() {

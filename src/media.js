@@ -52,12 +52,31 @@ async function streamObject(key) {
   return client.getObject(bucket, key);
 }
 
+function listGymObjectKeys(gymId) {
+  return new Promise((resolve, reject) => {
+    const keys = [];
+    const stream = client.listObjectsV2(bucket, gymFolderPrefix(gymId), true);
+    stream.on('data', (obj) => keys.push(obj.name));
+    stream.on('error', reject);
+    stream.on('end', () => resolve(keys));
+  });
+}
+
+// Удаляет из MinIO всё под gym/<gymId>/ — вызывать до gyms.deleteGym (FK
+// каскад чистит только строки в БД, не объекты в object storage).
+async function deleteGymFolder(gymId) {
+  const keys = await listGymObjectKeys(gymId);
+  if (keys.length) await client.removeObjects(bucket, keys);
+  return keys.length;
+}
+
 module.exports = {
   ensureBucket,
   ensureGymFolder,
   uploadEquipmentPhoto,
   getMediaForEquipment,
   streamObject,
+  deleteGymFolder,
   equipmentObjectKey,
   gymFolderPrefix,
 };

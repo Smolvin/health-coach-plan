@@ -22,14 +22,35 @@ async function getClassByCode(code) {
   return rows[0] || null;
 }
 
+// Для каталожного импорта (scripts/import_catalog.js) — категории каталога
+// становятся классами один в один, без риска задвоить при повторном запуске.
+async function getOrCreateClass(code, name, description) {
+  const existing = await getClassByCode(code);
+  if (existing) return existing;
+  await createClass(code, name, description);
+  return getClassByCode(code);
+}
+
 // added_by нужен, чтобы позже можно было проверить "своё фото" при классификации.
 // photoFileId — из Telegram (поштучная загрузка через бота); sourceFile — имя
-// исходного файла при массовом импорте (scripts/import_media.js). Ровно одно
-// из двух обычно заполнено, но оба необязательны на уровне схемы.
-async function addPhoto({ gymId, photoFileId = null, sourceFile = null, name, addedBy }) {
+// исходного файла при массовом импорте (scripts/import_media.js,
+// scripts/import_catalog.js). classId/description/quantitySeen заполняются
+// сразу при каталожном импорте — там оборудование приходит уже классифицированным.
+async function addPhoto({
+  gymId,
+  photoFileId = null,
+  sourceFile = null,
+  name,
+  description = null,
+  quantitySeen = null,
+  classId = null,
+  addedBy,
+}) {
   const [result] = await pool.query(
-    'INSERT INTO gym_equipment (gym_id, photo_file_id, source_file, name, added_by) VALUES (?, ?, ?, ?, ?)',
-    [gymId, photoFileId, sourceFile, name || null, addedBy]
+    `INSERT INTO gym_equipment
+       (gym_id, photo_file_id, source_file, name, description, quantity_seen, equipment_class_id, added_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [gymId, photoFileId, sourceFile, name || null, description, quantitySeen, classId, addedBy]
   );
   return result.insertId;
 }
@@ -80,6 +101,7 @@ module.exports = {
   createClass,
   listClasses,
   getClassByCode,
+  getOrCreateClass,
   addPhoto,
   findBySourceFile,
   listGymEquipment,

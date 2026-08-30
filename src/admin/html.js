@@ -21,9 +21,10 @@ const NAV = [
   ['/logs', 'Логи'],
   ['/gyms', 'Залы'],
   ['/classes', 'Классы'],
+  ['/menu', 'Меню'],
 ];
 
-function layout({ title, active, body }) {
+function layout({ title, active, body, extraHead = '', bodyEnd = '' }) {
   const nav = NAV.map(
     ([href, label]) => `<a href="${href}"${href === active ? ' class="active"' : ''}>${label}</a>`
   ).join('\n');
@@ -89,7 +90,18 @@ function layout({ title, active, body }) {
   .muted { color: light-dark(#6b756e, #8fa196); }
   .actions { display: flex; gap: 8px; align-items: center; }
   .badge-owner { color: #b8860b; }
+  .table-wrap { overflow-x: auto; }
+  .col-wrap { max-width: 420px; word-break: break-word; }
+  button.icon-danger {
+    background: transparent; color: light-dark(#c9432f, #e5674f);
+    border: 1px solid light-dark(#e8c9c2, #4a2f2a); border-radius: 8px;
+    width: 30px; height: 30px; padding: 0; font-size: 15px; line-height: 1; cursor: pointer;
+  }
+  button.icon-danger:hover { background: light-dark(#fbecea, #2a1a17); }
+  button.icon-danger:disabled { opacity: .5; cursor: default; }
+  .save-status { font-size: 12px; color: light-dark(#146c4c, #3fd8a3); margin-left: 6px; }
 </style>
+${extraHead}
 </head>
 <body>
 <header>
@@ -99,8 +111,87 @@ function layout({ title, active, body }) {
 <main>
 ${body}
 </main>
+${bodyEnd}
 </body>
 </html>`;
 }
 
-module.exports = { escapeHtml, layout };
+// Общий AJAX-обработчик форм для страниц, где не хочется дёргать полную
+// перезагрузку на каждое сохранение/удаление (сейчас — /menu, /strategies/:code).
+// Ничего не меняет на бэкенде: те же POST-роуты с редиректом, просто отправляются
+// через fetch, а не обычной отправкой формы. На форме — data-атрибуты:
+//   data-ajax                — обязательный маркер, что форму нужно перехватывать
+//   data-confirm="..."       — подтверждение перед отправкой (вместо inline onsubmit)
+//   data-refresh="id1 id2"   — после успеха подменить эти контейнеры свежей
+//                              версией (фоновый fetch этой же страницы + DOMParser)
+//   data-remove-row="tr"     — после успеха сразу убрать ближайший подходящий
+//                              предок (для строк удаления — без ожидания refresh)
+//   data-success-text="..."  — текст статуса вместо дефолтного "Сохранено ✓"
+// Без data-refresh и data-remove-row — просто показывает статус рядом с кнопкой.
+const AJAX_FORMS_SCRIPT = `<script>
+(function () {
+  async function refreshContainers(ids) {
+    const html = await fetch(location.href, { cache: 'no-store' }).then(function (r) { return r.text(); });
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    ids.forEach(function (id) {
+      var fresh = doc.getElementById(id);
+      var mine = document.getElementById(id);
+      if (fresh && mine) {
+        mine.replaceWith(fresh);
+        bindForms(fresh);
+      }
+    });
+  }
+
+  function bindForms(root) {
+    root.querySelectorAll('form[data-ajax]').forEach(function (form) {
+      if (form.dataset.bound) return;
+      form.dataset.bound = '1';
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        if (form.dataset.confirm && !confirm(form.dataset.confirm)) return;
+
+        var btn = form.querySelector('button[type=submit]');
+        var originalText = btn ? btn.textContent : '';
+        if (btn) { btn.disabled = true; btn.textContent = '…'; }
+
+        fetch(form.action, { method: 'POST', body: new URLSearchParams(new FormData(form)) })
+          .then(function (res) {
+            if (!res.ok) throw new Error('bad status');
+            if (form.dataset.removeRow) {
+              var row = form.closest(form.dataset.removeRow);
+              if (row) row.remove();
+              return;
+            }
+            if (form.dataset.refresh) {
+              return refreshContainers(form.dataset.refresh.split(' ').filter(Boolean));
+            }
+            if (btn) {
+              btn.textContent = originalText;
+              var status = document.createElement('span');
+              status.className = 'save-status';
+              status.textContent = form.dataset.successText || 'Сохранено ✓';
+              btn.insertAdjacentElement('afterend', status);
+              setTimeout(function () { status.remove(); }, 1500);
+            }
+          })
+          .catch(function () {
+            alert('Не удалось сохранить. Попробуй ещё раз.');
+          })
+          .finally(function () {
+            if (btn && document.body.contains(btn) && btn.textContent === '…') {
+              btn.disabled = false;
+              btn.textContent = originalText;
+            } else if (btn) {
+              btn.disabled = false;
+            }
+          });
+      });
+    });
+  }
+
+  bindForms(document);
+})();
+</script>`;
+
+module.exports = { escapeHtml, layout, AJAX_FORMS_SCRIPT };

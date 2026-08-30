@@ -15,6 +15,10 @@ const { registerGroupCommands } = require('./group-commands');
 const { editAnswerScene } = require('./edit-answer-scene');
 const { registerGymCommands } = require('./gym-commands');
 const { createGymScene, addEquipmentScene } = require('./gym-scenes');
+const { createSurveyRound, completeSurveyRound, listClientSurveys } = require('./client-surveys');
+const { registerSurveyCommands } = require('./survey-commands');
+const { addMeasurementScene } = require('./measurement-scene');
+const { listClientsDueForReminder, markReminderSent } = require('./measurements');
 const { setDefaultMenu, syncAllAdminMenus } = require('./menu');
 
 const ONBOARDING_SCENE_ID = 'onboarding';
@@ -79,29 +83,45 @@ async function resumeIntoState(ctx, client) {
     );
   }
 
-  const questions = await getQuestions(client.survey_strategy);
-  const answeredCount = await getAnsweredCount(client.id, 1);
+  // Незаконченным может быть не только самый первый раунд — /extend и
+  // /newsurvey тоже заводят свои раунды в client_surveys, ищем любой
+  // "in_progress", не только round 1.
+  const surveys = await listClientSurveys(client.id);
+  const inProgress = surveys.find((s) => s.status === 'in_progress');
 
-  if (answeredCount < questions.length) {
-    state.questions = questions;
-    state.qi = answeredCount;
-    state.round = 1;
-    state.clientId = client.id;
-    state.step = 'questions';
-    await ctx.reply(
-      `С возвращением! Продолжим анкету с того же места (отвечено ${answeredCount} из ${questions.length}).`,
-      Markup.removeKeyboard()
-    );
-    return askQuestion(ctx, questions[answeredCount], answeredCount, questions.length);
+  if (inProgress) {
+    const questions =
+      inProgress.kind === 'extend'
+        ? await getStrategyDelta('short', 'long')
+        : await getQuestions(inProgress.strategy_code || client.survey_strategy);
+    const answeredCount = await getAnsweredCount(client.id, inProgress.round);
+
+    if (answeredCount < questions.length) {
+      state.questions = questions;
+      state.qi = answeredCount;
+      state.round = inProgress.round;
+      state.kind = inProgress.kind;
+      state.strategyCode = inProgress.strategy_code || client.survey_strategy;
+      state.clientId = client.id;
+      state.step = 'questions';
+      await ctx.reply(
+        `С возвращением! Продолжим анкету (раунд ${inProgress.round}) с того же места (отвечено ${answeredCount} из ${questions.length}).`,
+        Markup.removeKeyboard()
+      );
+      return askQuestion(ctx, questions[answeredCount], answeredCount, questions.length);
+    }
   }
 
   if (client.survey_strategy === 'short') {
     return ctx.reply(
-      'Короткая анкета уже пройдена. Если хочешь ответить ещё на несколько вопросов для более точной программы — команда /extend.',
+      'Короткая анкета уже пройдена. Если хочешь ответить ещё на несколько вопросов для более точной программы — команда /extend, или пройти всё заново — /newsurvey.',
       Markup.removeKeyboard()
     );
   }
-  return ctx.reply('Анкета уже полностью пройдена, добавить тут больше нечего.', Markup.removeKeyboard());
+  return ctx.reply(
+    'Анкета уже полностью пройдена. Хочешь пройти заново (например, изменились параметры) — команда /newsurvey.',
+    Markup.removeKeyboard()
+  );
 }
 
 const onboardingScene = new Scenes.BaseScene(ONBOARDING_SCENE_ID);
@@ -111,12 +131,21 @@ onboardingScene.enter(async (ctx) => {
 
   if (state.resumeExtend) {
     state.round = 2;
+    state.kind = 'extend';
     state.step = 'questions';
+    await createSurveyRound(state.clientId, 2, 'extend', 'long');
     await ctx.reply(
       `Расширенная анкета — ${state.questions.length} дополнительных вопрос(ов). Погнали!`,
       Markup.removeKeyboard()
     );
     return askQuestion(ctx, state.questions[state.qi], state.qi, state.questions.length);
+  }
+
+  if (state.newSurveyRound) {
+    // Приглашение выбрать стратегию уже отправлено командой /newsurvey —
+    // тут просто переходим в ту же ветку 'strategy', что и у первичной анкеты.
+    state.step = 'strategy';
+    return;
   }
 
   if (state.resume) {
@@ -188,15 +217,22 @@ onboardingScene.on('text', async (ctx) => {
       }
       state.strategyCode = code;
       state.questions = await getQuestions(code);
-      state.round = 1;
+      state.kind = 'full';
       state.qi = 0;
 
-      try {
-        state.clientId = await upsertClient(state, ctx.from.id, ctx.from.username);
-      } catch (err) {
-        console.error('Ошибка сохранения карточки клиента:', err);
-        return ctx.reply('Не удалось сохранить данные, попробуй ещё раз чуть позже.');
+      if (state.newSurveyRound) {
+        // clientId уже известен (клиент существующий) — профиль не трогаем.
+        state.round = state.newSurveyRound;
+      } else {
+        state.round = 1;
+        try {
+          state.clientId = await upsertClient(state, ctx.from.id, ctx.from.username);
+        } catch (err) {
+          console.error('Ошибка сохранения карточки клиента:', err);
+          return ctx.reply('Не удалось сохранить данные, попробуй ещё раз чуть позже.');
+        }
       }
+      await createSurveyRound(state.clientId, state.round, 'full', code);
 
       state.step = 'questions';
       await ctx.reply(
@@ -228,10 +264,19 @@ onboardingScene.on('text', async (ctx) => {
         return askQuestion(ctx, state.questions[state.qi], state.qi, state.questions.length);
       }
 
-      if (state.round === 2) {
+      await completeSurveyRound(state.clientId, state.round);
+
+      if (state.kind === 'extend') {
         await upgradeStrategy(state.clientId, 'long');
         await ctx.reply(
           'Отлично! Расширенная анкета тоже сохранена — теперь у меня полная картина.',
+          Markup.removeKeyboard()
+        );
+      } else if (state.round > 1) {
+        // /newsurvey — очередной полный раунд поверх уже пройденной анкеты.
+        await upgradeStrategy(state.clientId, state.strategyCode);
+        await ctx.reply(
+          `Новая анкета (раунд ${state.round}) сохранена — учту изменения параметров при следующей программе.`,
           Markup.removeKeyboard()
         );
       } else {
@@ -249,7 +294,7 @@ onboardingScene.on('text', async (ctx) => {
   }
 });
 
-const stage = new Scenes.Stage([onboardingScene, editAnswerScene, createGymScene, addEquipmentScene]);
+const stage = new Scenes.Stage([onboardingScene, editAnswerScene, createGymScene, addEquipmentScene, addMeasurementScene]);
 
 const bot = new Telegraf(BOT_TOKEN);
 bot.use(session());
@@ -296,11 +341,15 @@ bot.command('extend', async (ctx) => {
 bot.help((ctx) => {
   ctx.reply(
     'Команды:\n/start — начать анкету\n/continue — продолжить незаконченную анкету\n' +
-      '/extend — пройти расширенную анкету (после короткой)\n/help — эта справка\n/whoami — узнать свой Telegram ID\n\n' +
+      '/extend — пройти расширенную анкету (после короткой)\n/newsurvey — пройти анкету заново (новый раунд)\n' +
+      '/addmeasurement — записать замеры\n/measurements — мои замеры\n' +
+      '/help — эта справка\n/whoami — узнать свой Telegram ID\n\n' +
       'Залы и оборудование: /gyms, /gym, /creategym, /addequipment, /showequipment, /classes, /classifyequipment\n\n' +
       'Для админов: /stats, /clients, /editanswer, /logs, /admins, /addadmin, /removeadmin, /groups, /creategroup, /setclientgroup, /setadmingroup, /createclass'
   );
 });
+
+registerSurveyCommands(bot, ONBOARDING_SCENE_ID);
 
 registerAdminCommands(bot);
 registerGroupCommands(bot);
@@ -316,9 +365,11 @@ bot.on('text', async (ctx) => {
   const client = await getClientByTelegramId(ctx.from.id);
   if (!client) return ctx.reply('Не понял. Напиши /start, чтобы начать анкету.');
 
-  const questions = client.survey_strategy ? await getQuestions(client.survey_strategy) : [];
-  const answeredCount = client.survey_strategy ? await getAnsweredCount(client.id, 1) : 0;
-  const unfinished = !client.wants_plan || !client.survey_strategy || answeredCount < questions.length;
+  let unfinished = !client.wants_plan || !client.survey_strategy;
+  if (!unfinished) {
+    const surveys = await listClientSurveys(client.id);
+    unfinished = surveys.some((s) => s.status === 'in_progress');
+  }
 
   if (!unfinished) {
     return ctx.reply('Анкета уже пройдена. Команды — /help.');
@@ -328,12 +379,37 @@ bot.on('text', async (ctx) => {
   return ctx.scene.enter(ONBOARDING_SCENE_ID, { resume: true, client });
 });
 
+// Раз в 2 недели — напоминание сделать замеры. Планировщика вроде node-cron
+// нет и не заводили ради одной задачи: простой ежедневный интервал внутри
+// самого процесса бота, отбор "кому пора" — на стороне SQL (listClientsDueForReminder).
+const MEASUREMENT_REMINDER_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+async function sendMeasurementReminders() {
+  const due = await listClientsDueForReminder();
+  for (const client of due) {
+    try {
+      await bot.telegram.sendMessage(
+        client.telegram_id,
+        `Привет, ${client.name}! Прошло 2 недели — самое время сделать новые замеры. /addmeasurement`
+      );
+      await markReminderSent(client.id);
+    } catch (err) {
+      console.error(`Не удалось отправить напоминание о замерах клиенту #${client.id}:`, err.message);
+    }
+  }
+}
+
 ensureOwner(OWNER_TELEGRAM_ID)
   .then(() => setDefaultMenu(bot.telegram))
   .then(() => syncAllAdminMenus(bot.telegram))
   .then(() => {
     bot.launch();
     console.log('Бот запущен (long polling).');
+    setTimeout(() => sendMeasurementReminders().catch((err) => console.error('Напоминания о замерах:', err)), 60 * 1000);
+    setInterval(
+      () => sendMeasurementReminders().catch((err) => console.error('Напоминания о замерах:', err)),
+      MEASUREMENT_REMINDER_CHECK_INTERVAL_MS
+    );
   })
   .catch((err) => {
     console.error('Не удалось запустить бота:', err);

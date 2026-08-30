@@ -8,3 +8,4 @@ node_modules/
 # персональные данные клиентов — не версионируются
 clients/
 notes.md
+dev-tasks.md

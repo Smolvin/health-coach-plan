@@ -527,7 +527,11 @@ function questionForm({ question, action }) {
 app.get(
   '/questions',
   wrapErrors(async (req, res) => {
-    const list = await survey.listAllQuestions();
+    const page = getPage(req);
+    const [list, total] = await Promise.all([
+      survey.listAllQuestions({ limit: pageSizeFor('questions'), offset: getOffset(req, 'questions') }),
+      survey.countAllQuestions(),
+    ]);
     const rows = list
       .map(
         (q) => `<tr>
@@ -541,7 +545,7 @@ app.get(
       .join('');
 
     const body = `
-      <h2>Вопросы анкеты (${list.length})</h2>
+      <h2>Вопросы анкеты (${total})</h2>
       <div class="actions" style="margin-bottom:14px">
         <a href="/questions/new"><button>+ Новый вопрос</button></a>
       </div>
@@ -552,6 +556,7 @@ app.get(
           ${rows}
         </table>
         </div>
+        ${pagerHtml('questions', '/questions', page, total)}
       </div>`;
     res.send(layout({ title: 'Вопросы', active: '/questions', body }));
   })
@@ -718,7 +723,12 @@ app.post(
 app.get(
   '/admins',
   wrapErrors(async (req, res) => {
-    const [list, allGroups] = await Promise.all([admins.listAdmins(), groups.listGroups()]);
+    const page = getPage(req);
+    const [list, total, allGroups] = await Promise.all([
+      admins.listAdmins({ limit: pageSizeFor('admins'), offset: getOffset(req, 'admins') }),
+      admins.countAdmins(),
+      groups.listGroups(),
+    ]);
     const rows = list
       .map(
         (a) => `<tr>
@@ -738,7 +748,7 @@ app.get(
       )
       .join('');
     const body = `
-      <h2>Админы бота</h2>
+      <h2>Админы бота (${total})</h2>
       <p class="muted">Добавление/удаление админов — командами в боте (/addadmin, /removeadmin). Область видимости (какую группу клиентов админ видит) можно менять и здесь.</p>
       <div class="card">
         <div class="table-wrap">
@@ -747,6 +757,7 @@ app.get(
           ${rows || '<tr><td colspan="5" class="muted">Пока нет ни одного админа — назначьте владельца через OWNER_TELEGRAM_ID в .env</td></tr>'}
         </table>
         </div>
+        ${pagerHtml('admins', '/admins', page, total)}
       </div>`;
     res.send(layout({ title: 'Админы', active: '/admins', body }));
   })
@@ -766,7 +777,11 @@ app.post(
 app.get(
   '/groups',
   wrapErrors(async (req, res) => {
-    const list = await groups.listGroups();
+    const page = getPage(req);
+    const [list, total] = await Promise.all([
+      groups.listGroups({ limit: pageSizeFor('groups'), offset: getOffset(req, 'groups') }),
+      groups.countGroups(),
+    ]);
     const rows = list
       .map(
         (g) =>
@@ -776,7 +791,7 @@ app.get(
       .join('');
 
     const body = `
-      <h2>Группы клиентов (${list.length})</h2>
+      <h2>Группы клиентов (${total})</h2>
       <p class="muted">Клиента в группу — на странице «Клиенты» или на карточке клиента. Кто из админов какую группу видит — на странице «Админы».</p>
       <div class="card">
         <div class="table-wrap">
@@ -785,6 +800,7 @@ app.get(
           ${rows || '<tr><td colspan="4" class="muted">Групп пока нет</td></tr>'}
         </table>
         </div>
+        ${pagerHtml('groups', '/groups', page, total)}
       </div>
       <div class="card">
         <h2>Новая группа</h2>
@@ -1218,7 +1234,11 @@ app.get(
 app.get(
   '/classes',
   wrapErrors(async (req, res) => {
-    const list = await equipment.listClasses();
+    const page = getPage(req);
+    const [list, total] = await Promise.all([
+      equipment.listClasses({ limit: pageSizeFor('classes'), offset: getOffset(req, 'classes') }),
+      equipment.countClasses(),
+    ]);
     const rows = list
       .map(
         (c) => `<tr><td>${escapeHtml(c.code)}</td><td>${escapeHtml(c.name)}</td><td>${escapeHtml(c.description || '')}</td></tr>`
@@ -1226,7 +1246,7 @@ app.get(
       .join('');
 
     const body = `
-      <h2>Классы оборудования (${list.length})</h2>
+      <h2>Классы оборудования (${total})</h2>
       <p class="muted">Справочник — одно и то же оборудование бывает в разных залах, класс у него общий.</p>
       <div class="card">
         <div class="table-wrap">
@@ -1235,6 +1255,7 @@ app.get(
           ${rows || '<tr><td colspan="3" class="muted">Классов пока нет</td></tr>'}
         </table>
         </div>
+        ${pagerHtml('classes', '/classes', page, total)}
       </div>
       <div class="card">
         <h2>Новый класс</h2>

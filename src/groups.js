@@ -3,15 +3,26 @@
 // /editanswer, /logs. group_id = NULL у админа значит «видит всех».
 const pool = require('./db');
 
-async function listGroups() {
-  const [rows] = await pool.query(
-    `SELECT g.id, g.code, g.name, COUNT(c.id) AS client_count
+// Без limit — вернуть всё (нужно дропдаунам выбора группы на других
+// страницах). С limit — постраничный список на /groups.
+async function listGroups({ limit, offset = 0 } = {}) {
+  const params = [];
+  let sql = `SELECT g.id, g.code, g.name, COUNT(c.id) AS client_count
      FROM client_groups g
      LEFT JOIN clients c ON c.group_id = g.id
      GROUP BY g.id
-     ORDER BY g.name`
-  );
+     ORDER BY g.name`;
+  if (limit) {
+    sql += ' LIMIT ? OFFSET ?';
+    params.push(limit, offset);
+  }
+  const [rows] = await pool.query(sql, params);
   return rows;
+}
+
+async function countGroups() {
+  const [[{ n }]] = await pool.query('SELECT COUNT(*) AS n FROM client_groups');
+  return n;
 }
 
 async function createGroup(code, name) {
@@ -34,4 +45,4 @@ async function updateGroupName(id, name) {
   await pool.query('UPDATE client_groups SET name = ? WHERE id = ?', [name, id]);
 }
 
-module.exports = { listGroups, createGroup, getGroupByCode, getGroupById, updateGroupName };
+module.exports = { listGroups, countGroups, createGroup, getGroupByCode, getGroupById, updateGroupName };

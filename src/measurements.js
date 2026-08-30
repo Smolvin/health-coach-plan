@@ -22,17 +22,24 @@ async function addMeasurement(clientId, measurementTypeId, value, recordedAt) {
   return result.insertId;
 }
 
-async function listForClient(clientId, { limit = 50 } = {}) {
+async function listForClient(clientId, { limit = 50, offset = 0 } = {}) {
   const [rows] = await pool.query(
     `SELECT m.*, t.name AS type_name, t.unit, t.code AS type_code
      FROM client_measurements m
      JOIN measurement_types t ON t.id = m.measurement_type_id
      WHERE m.client_id = ?
      ORDER BY m.recorded_at DESC, m.id DESC
-     LIMIT ?`,
-    [clientId, limit]
+     LIMIT ? OFFSET ?`,
+    [clientId, limit, offset]
   );
   return rows;
+}
+
+async function countForClient(clientId) {
+  const [[{ n }]] = await pool.query('SELECT COUNT(*) AS n FROM client_measurements WHERE client_id = ?', [
+    clientId,
+  ]);
+  return n;
 }
 
 // Клиенты, кому пора напомнить: последний замер (или создание анкеты, если
@@ -63,6 +70,7 @@ module.exports = {
   getTypeByCode,
   addMeasurement,
   listForClient,
+  countForClient,
   listClientsDueForReminder,
   markReminderSent,
 };

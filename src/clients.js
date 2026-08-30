@@ -4,24 +4,34 @@ const pool = require('./db');
 
 // deletedOnly — показать только мягко удалённых (страница "корзины"), иначе
 // по умолчанию удалённые скрыты. groupId и deletedOnly можно сочетать.
-async function listClients({ limit = 50, groupId, deletedOnly = false } = {}) {
+function clientsWhere({ groupId, deletedOnly = false }) {
   const conditions = [deletedOnly ? 'deleted_at IS NOT NULL' : 'deleted_at IS NULL'];
   const params = [];
   if (groupId) {
     conditions.push('group_id = ?');
     params.push(groupId);
   }
-  params.push(limit);
+  return { where: conditions.join(' AND '), params };
+}
+
+async function listClients({ limit = 50, offset = 0, groupId, deletedOnly = false } = {}) {
+  const { where, params } = clientsWhere({ groupId, deletedOnly });
   const [rows] = await pool.query(
     `SELECT id, telegram_id, telegram_username, name, city, birth_date, status,
             survey_strategy, group_id, wants_plan, created_at, updated_at, deleted_at
      FROM clients
-     WHERE ${conditions.join(' AND ')}
+     WHERE ${where}
      ORDER BY created_at DESC
-     LIMIT ?`,
-    params
+     LIMIT ? OFFSET ?`,
+    [...params, limit, offset]
   );
   return rows;
+}
+
+async function countClients({ groupId, deletedOnly = false } = {}) {
+  const { where, params } = clientsWhere({ groupId, deletedOnly });
+  const [[{ n }]] = await pool.query(`SELECT COUNT(*) AS n FROM clients WHERE ${where}`, params);
+  return n;
 }
 
 // Без фильтра по deleted_at — карточке клиента и восстановлению нужно видеть
@@ -43,6 +53,21 @@ async function getClientAnswers(clientId) {
      WHERE client_id = ?
      ORDER BY round, question_number`,
     [clientId]
+  );
+  return rows;
+}
+
+// Ответы одного конкретного раунда, постранично — то, что реально показывает
+// веб-админка (см. src/admin/pagination.js): весь список сразу, без выбора
+// раунда, не масштабируется, если у клиента их много.
+async function getClientAnswersForRound(clientId, round, { limit = 20, offset = 0 } = {}) {
+  const [rows] = await pool.query(
+    `SELECT round, question_number, question_text, answer_text, answered_at
+     FROM questionnaire_answers
+     WHERE client_id = ? AND round = ?
+     ORDER BY question_number
+     LIMIT ? OFFSET ?`,
+    [clientId, round, limit, offset]
   );
   return rows;
 }
@@ -155,9 +180,11 @@ async function getStats() {
 
 module.exports = {
   listClients,
+  countClients,
   getClient,
   getClientByTelegramId,
   getClientAnswers,
+  getClientAnswersForRound,
   getAnsweredCount,
   findClientByUsername,
   setClientGroup,

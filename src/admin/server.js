@@ -5,6 +5,7 @@ const express = require('express');
 const { Telegraf } = require('telegraf');
 const { ADMIN_WEB, BOT_TOKEN } = require('../config');
 const { escapeHtml, layout, AJAX_FORMS_SCRIPT } = require('./html');
+const { pageSizeFor, getPage, getOffset, pagerHtml } = require('./pagination');
 const clients = require('../clients');
 const survey = require('../survey');
 const admins = require('../admins');
@@ -106,8 +107,11 @@ app.get(
   '/clients',
   wrapErrors(async (req, res) => {
     const deletedOnly = req.query.deleted === '1';
-    const [list, allGroups] = await Promise.all([
-      clients.listClients({ limit: 200, deletedOnly }),
+    const page = getPage(req);
+    const pageSize = pageSizeFor('clients');
+    const [list, total, allGroups] = await Promise.all([
+      clients.listClients({ limit: pageSize, offset: getOffset(req, 'clients'), deletedOnly }),
+      clients.countClients({ deletedOnly }),
       groups.listGroups(),
     ]);
     const rows = list
@@ -145,8 +149,9 @@ app.get(
       )
       .join('');
 
+    const baseUrl = deletedOnly ? '/clients?deleted=1' : '/clients';
     const body = `
-      <h2>${deletedOnly ? 'Удалённые клиенты' : 'Клиенты'} (${list.length})</h2>
+      <h2>${deletedOnly ? 'Удалённые клиенты' : 'Клиенты'} (${total})</h2>
       <p class="muted">
         ${deletedOnly ? 'Мягко удалённые — данные не потеряны, можно восстановить.' : ''}
         <a href="/clients${deletedOnly ? '' : '?deleted=1'}">${deletedOnly ? '← К активным клиентам' : 'Удалённые →'}</a>
@@ -158,6 +163,7 @@ app.get(
           ${rows || `<tr><td colspan="9" class="muted">${deletedOnly ? 'Удалённых клиентов нет' : 'Клиентов пока нет'}</td></tr>`}
         </table>
         </div>
+        ${pagerHtml('clients', baseUrl, page, total)}
       </div>`;
     res.send(layout({ title: deletedOnly ? 'Удалённые клиенты' : 'Клиенты', active: '/clients', body }));
   })
@@ -204,30 +210,43 @@ app.get(
   wrapErrors(async (req, res) => {
     const client = await clients.getClient(req.params.id);
     if (!client) return res.status(404).send('Клиент не найден');
-    const [answers, allGroups, allClients, clientSnapshots, surveyRounds, allRounds, clientMeasurements] =
-      await Promise.all([
-        clients.getClientAnswers(client.id),
-        groups.listGroups(),
-        clients.listClients({ limit: 500 }),
-        snapshots.listSnapshots(client.id),
-        clientSurveys.listClientSurveys(client.id),
-        clientSurveys.listAllCompletedRounds(),
-        measurements.listForClient(client.id, { limit: 30 }),
-      ]);
+
+    const roundsPage = getPage(req, 'roundsPage');
+    const measurementsPage = getPage(req, 'measurementsPage');
+    const snapshotsPage = getPage(req, 'snapshotsPage');
+
+    const [
+      allGroups,
+      allClients,
+      clientSnapshots,
+      snapshotsTotal,
+      surveyRounds,
+      surveyRoundsTotal,
+      allRounds,
+      clientMeasurements,
+      measurementsTotal,
+    ] = await Promise.all([
+      groups.listGroups(),
+      clients.listClients({ limit: 500 }),
+      snapshots.listSnapshots(client.id, {
+        limit: pageSizeFor('snapshots'),
+        offset: getOffset(req, 'snapshots', 'snapshotsPage'),
+      }),
+      snapshots.countSnapshots(client.id),
+      clientSurveys.listClientSurveys(client.id, {
+        limit: pageSizeFor('clientSurveys'),
+        offset: getOffset(req, 'clientSurveys', 'roundsPage'),
+      }),
+      clientSurveys.countClientSurveys(client.id),
+      clientSurveys.listAllCompletedRounds(),
+      measurements.listForClient(client.id, {
+        limit: pageSizeFor('measurements'),
+        offset: getOffset(req, 'measurements', 'measurementsPage'),
+      }),
+      measurements.countForClient(client.id),
+    ]);
     const otherClients = allClients.filter((c) => c.id !== client.id);
     const otherRounds = allRounds.filter((r) => r.client_id !== client.id);
-
-    const answerRows = answers
-      .map(
-        (a) => `<tr>
-          <td class="muted">${a.round}</td>
-          <td class="muted">${a.question_number}</td>
-          <td>${escapeHtml(a.question_text)}</td>
-          <td><strong>${escapeHtml(a.answer_text)}</strong></td>
-          <td class="muted">${fmtDate(a.answered_at)}</td>
-        </tr>`
-      )
-      .join('');
 
     const body = `
       <h2>#${client.id} — ${escapeHtml(client.name)}</h2>
@@ -261,8 +280,8 @@ app.get(
         </div>
       </div>
       <div class="card">
-        <h2>Раунды анкеты (${surveyRounds.length})</h2>
-        <p class="muted">Клиент может проходить анкету заново (/newsurvey в боте) — каждый раз новый раунд, старые не пропадают.</p>
+        <h2>Раунды анкеты (${surveyRoundsTotal})</h2>
+        <p class="muted">Клиент может проходить анкету заново (/newsurvey в боте) — каждый раз новый раунд, старые не пропадают. Клик по раунду — посмотреть его ответы.</p>
         <div class="table-wrap">
         <table>
           <tr><th>Раунд</th><th>Тип</th><th>Стратегия</th><th>Статус</th><th>Начат</th><th>Завершён</th></tr>
@@ -270,7 +289,7 @@ app.get(
             surveyRounds
               .map(
                 (s) => `<tr>
-                  <td>${s.round}</td>
+                  <td><a href="/clients/${client.id}/surveys/${s.round}">#${s.round}</a></td>
                   <td class="muted">${s.kind === 'extend' ? 'расширение' : 'полная'}</td>
                   <td class="muted">${escapeHtml(s.strategy_code || '—')}</td>
                   <td><span class="pill">${s.status === 'completed' ? 'завершён' : 'в процессе'}</span></td>
@@ -282,18 +301,10 @@ app.get(
           }
         </table>
         </div>
+        ${pagerHtml('clientSurveys', `/clients/${client.id}`, roundsPage, surveyRoundsTotal, 'roundsPage')}
       </div>
       <div class="card">
-        <h2>Ответы на анкету (${answers.length})</h2>
-        <div class="table-wrap">
-        <table>
-          <tr><th>Раунд</th><th>№</th><th>Вопрос</th><th>Ответ</th><th>Когда</th></tr>
-          ${answerRows || '<tr><td colspan="5" class="muted">Пока нет ответов</td></tr>'}
-        </table>
-        </div>
-      </div>
-      <div class="card">
-        <h2>Замеры (${clientMeasurements.length})</h2>
+        <h2>Замеры (${measurementsTotal})</h2>
         <div class="table-wrap">
         <table>
           <tr><th>Дата</th><th>Параметр</th><th>Значение</th></tr>
@@ -310,6 +321,7 @@ app.get(
           }
         </table>
         </div>
+        ${pagerHtml('measurements', `/clients/${client.id}`, measurementsPage, measurementsTotal, 'measurementsPage')}
         <form method="post" action="/clients/${client.id}/measurement-settings" style="margin-top:16px; display:flex; gap:18px; align-items:center; flex-wrap:wrap;">
           <label style="display:inline-flex; align-items:center; gap:6px; margin:0;">
             <input type="checkbox" name="measurementsEnabled" value="1" ${client.measurements_enabled ? 'checked' : ''} style="width:auto;">
@@ -360,7 +372,7 @@ app.get(
         }
       </div>
       <div class="card">
-        <h2>Снимки анкеты (${clientSnapshots.length})</h2>
+        <h2>Снимки анкеты (${snapshotsTotal})</h2>
         <p class="muted">Снимаются автоматически перед каждым копированием данных другого клиента поверх этого.</p>
         <div class="table-wrap">
         <table>
@@ -383,6 +395,7 @@ app.get(
           }
         </table>
         </div>
+        ${pagerHtml('snapshots', `/clients/${client.id}`, snapshotsPage, snapshotsTotal, 'snapshotsPage')}
       </div>
       <div class="card">
         <h2>Удаление</h2>
@@ -392,6 +405,61 @@ app.get(
         </form>
       </div>`;
     res.send(layout({ title: `Клиент #${client.id}`, active: '/clients', body }));
+  })
+);
+
+// Ответы одного раунда — отдельный уровень роутинга (не общий список сразу
+// всех раундов): у клиента их может накопиться много, показывать всё разом
+// плоским списком на карточке клиента не масштабируется.
+app.get(
+  '/clients/:id/surveys/:round',
+  wrapErrors(async (req, res) => {
+    const client = await clients.getClient(req.params.id);
+    if (!client) return res.status(404).send('Клиент не найден');
+    const round = Number(req.params.round);
+
+    const [surveyRound, page, total] = await Promise.all([
+      clientSurveys.getSurveyRound(client.id, round),
+      Promise.resolve(getPage(req)),
+      clients.getAnsweredCount(client.id, round),
+    ]);
+    if (!surveyRound) return res.status(404).send('Раунд анкеты не найден');
+
+    const answers = await clients.getClientAnswersForRound(client.id, round, {
+      limit: pageSizeFor('surveyAnswers'),
+      offset: getOffset(req, 'surveyAnswers'),
+    });
+
+    const rows = answers
+      .map(
+        (a) => `<tr>
+          <td class="muted">${a.question_number}</td>
+          <td>${escapeHtml(a.question_text)}</td>
+          <td><strong>${escapeHtml(a.answer_text)}</strong></td>
+          <td class="muted">${fmtDate(a.answered_at)}</td>
+        </tr>`
+      )
+      .join('');
+
+    const body = `
+      <h2>Клиент <a href="/clients/${client.id}">#${client.id} ${escapeHtml(client.name)}</a> — раунд ${round}</h2>
+      <p class="muted">
+        ${surveyRound.kind === 'extend' ? 'Расширение' : 'Полная анкета'}
+        ${surveyRound.strategy_code ? ` · стратегия ${escapeHtml(surveyRound.strategy_code)}` : ''}
+        · <span class="pill">${surveyRound.status === 'completed' ? 'завершён' : 'в процессе'}</span>
+        · начат ${fmtDate(surveyRound.started_at)}${surveyRound.completed_at ? `, завершён ${fmtDate(surveyRound.completed_at)}` : ''}
+      </p>
+      <div class="card">
+        <h2>Ответы (${total})</h2>
+        <div class="table-wrap">
+        <table>
+          <tr><th>№</th><th>Вопрос</th><th>Ответ</th><th>Когда</th></tr>
+          ${rows || '<tr><td colspan="4" class="muted">Пока нет ответов</td></tr>'}
+        </table>
+        </div>
+        ${pagerHtml('surveyAnswers', `/clients/${client.id}/surveys/${round}`, page, total)}
+      </div>`;
+    res.send(layout({ title: `#${client.id} — раунд ${round}`, active: '/clients', body }));
   })
 );
 
@@ -782,7 +850,11 @@ app.post(
 app.get(
   '/logs',
   wrapErrors(async (req, res) => {
-    const logs = await audit.listEditLogs({ limit: 100 });
+    const page = getPage(req);
+    const [logs, total] = await Promise.all([
+      audit.listEditLogs({ limit: pageSizeFor('logs'), offset: getOffset(req, 'logs') }),
+      audit.countEditLogs({}),
+    ]);
     const rows = logs
       .map(
         (l) => `<tr>
@@ -798,7 +870,7 @@ app.get(
       .join('');
 
     const body = `
-      <h2>Журнал правок ответов (последние ${logs.length})</h2>
+      <h2>Журнал правок ответов (${total})</h2>
       <p class="muted">Здесь — все правки, сделанные через команду /editanswer в боте.</p>
       <div class="card">
         <div class="table-wrap">
@@ -807,6 +879,7 @@ app.get(
           ${rows || '<tr><td colspan="7" class="muted">Правок пока нет</td></tr>'}
         </table>
         </div>
+        ${pagerHtml('logs', '/logs', page, total)}
       </div>`;
     res.send(layout({ title: 'Логи', active: '/logs', body }));
   })
@@ -818,7 +891,11 @@ app.get(
   '/gyms',
   wrapErrors(async (req, res) => {
     const deletedOnly = req.query.deleted === '1';
-    const list = await gyms.listGyms({ deletedOnly });
+    const page = getPage(req);
+    const [list, total] = await Promise.all([
+      gyms.listGyms({ deletedOnly, limit: pageSizeFor('gyms'), offset: getOffset(req, 'gyms') }),
+      gyms.countGyms({ deletedOnly }),
+    ]);
     const rows = list
       .map(
         (g) => `<tr>
@@ -841,8 +918,9 @@ app.get(
       )
       .join('');
 
+    const baseUrl = deletedOnly ? '/gyms?deleted=1' : '/gyms';
     const body = `
-      <h2>${deletedOnly ? 'Удалённые залы' : 'Залы'} (${list.length})</h2>
+      <h2>${deletedOnly ? 'Удалённые залы' : 'Залы'} (${total})</h2>
       <p class="muted">
         ${deletedOnly ? 'Мягко удалённые — оборудование и фото сохранены, можно восстановить.' : ''}
         <a href="/gyms${deletedOnly ? '' : '?deleted=1'}">${deletedOnly ? '← К активным залам' : 'Удалённые →'}</a>
@@ -854,6 +932,7 @@ app.get(
           ${rows || `<tr><td colspan="5" class="muted">${deletedOnly ? 'Удалённых залов нет' : 'Залов пока нет — заводятся командой /creategym в боте'}</td></tr>`}
         </table>
         </div>
+        ${pagerHtml('gyms', baseUrl, page, total)}
       </div>
       ${deletedOnly ? '' : '<p class="muted">Заводить залы и добавлять фото оборудования — через бота (/creategym, /addequipment). Здесь можно смотреть и классифицировать.</p>'}`;
     res.send(layout({ title: deletedOnly ? 'Удалённые залы' : 'Залы', active: '/gyms', body }));
@@ -906,7 +985,12 @@ app.get(
     const gym = await gyms.getGym(req.params.id);
     if (!gym) return res.status(404).send('Зал не найден');
 
-    const [items, allClasses] = await Promise.all([equipment.listGymEquipment(gym.id), equipment.listClasses()]);
+    const page = getPage(req);
+    const [items, itemsTotal, allClasses] = await Promise.all([
+      equipment.listGymEquipment(gym.id, { limit: pageSizeFor('gymEquipment'), offset: getOffset(req, 'gymEquipment') }),
+      equipment.countGymEquipment(gym.id),
+      equipment.listClasses(),
+    ]);
 
     const thumbs = items
       .map(
@@ -942,14 +1026,15 @@ app.get(
           : ''
       }
       <p class="muted">${gym.type === 'template' ? 'Типовой набор оборудования' : `Локация: ${escapeHtml(gym.location || '—')}`}</p>
-      <h2>Оборудование (${items.length})</h2>
+      <h2>Оборудование (${itemsTotal})</h2>
       ${
         items.length
           ? `<div class="gallery-toolbar">
                <button type="button" id="mode-view" class="secondary active">🖼 Просмотр</button>
                <button type="button" id="mode-edit" class="secondary">✏️ Просмотр с редактированием</button>
              </div>
-             <div class="equipment-grid" id="equipment-grid">${thumbs}</div>`
+             <div class="equipment-grid" id="equipment-grid">${thumbs}</div>
+             ${pagerHtml('gymEquipment', `/gyms/${gym.id}`, page, itemsTotal)}`
           : `<div class="card muted">Фото пока нет — добавляются командой /addequipment ${gym.id} в боте или скриптом import_media.</div>`
       }
       ${

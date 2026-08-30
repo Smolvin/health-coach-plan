@@ -28,13 +28,19 @@ async function createSnapshot(clientId, reason, createdBy) {
   return result.insertId;
 }
 
-async function listSnapshots(clientId) {
+async function listSnapshots(clientId, { limit = 20, offset = 0 } = {}) {
   const [rows] = await pool.query(
     `SELECT id, reason, created_by, created_at, restored_at
-     FROM client_snapshots WHERE client_id = ? ORDER BY created_at DESC`,
-    [clientId]
+     FROM client_snapshots WHERE client_id = ? ORDER BY created_at DESC
+     LIMIT ? OFFSET ?`,
+    [clientId, limit, offset]
   );
   return rows;
+}
+
+async function countSnapshots(clientId) {
+  const [[{ n }]] = await pool.query('SELECT COUNT(*) AS n FROM client_snapshots WHERE client_id = ?', [clientId]);
+  return n;
 }
 
 async function getSnapshot(id) {
@@ -106,4 +112,4 @@ async function restoreSnapshot(snapshotId) {
   return snapshot.client_id;
 }
 
-module.exports = { createSnapshot, listSnapshots, getSnapshot, copyClientData, restoreSnapshot };
+module.exports = { createSnapshot, listSnapshots, countSnapshots, getSnapshot, copyClientData, restoreSnapshot };

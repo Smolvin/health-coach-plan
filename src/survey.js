@@ -93,9 +93,17 @@ async function getStrategyDetail(strategyCode) {
   return { ...strategy, questions, available };
 }
 
-async function listAllQuestions() {
-  const [rows] = await pool.query('SELECT id, code, question_text, question_type, options, active FROM survey_questions ORDER BY code');
+async function listAllQuestions({ limit = 1000, offset = 0 } = {}) {
+  const [rows] = await pool.query(
+    'SELECT id, code, question_text, question_type, options, active FROM survey_questions ORDER BY code LIMIT ? OFFSET ?',
+    [limit, offset]
+  );
   return rows.map(normalizeQuestion);
+}
+
+async function countAllQuestions() {
+  const [[{ n }]] = await pool.query('SELECT COUNT(*) AS n FROM survey_questions');
+  return n;
 }
 
 async function getQuestionById(id) {
@@ -193,6 +201,7 @@ module.exports = {
   getStrategyDelta,
   getStrategyDetail,
   listAllQuestions,
+  countAllQuestions,
   getQuestionById,
   createQuestion,
   updateQuestion,

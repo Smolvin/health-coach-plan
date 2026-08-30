@@ -13,14 +13,25 @@ async function getAdmin(telegramId) {
   return rows[0] || null;
 }
 
-async function listAdmins() {
-  const [rows] = await pool.query(
-    `SELECT a.telegram_id, a.telegram_username, a.role, a.group_id, g.name AS group_name, a.added_by, a.created_at
+// Без limit — вернуть всех (так вызывает syncAllAdminMenus при старте бота,
+// ему нужны все админы, не только страница). С limit — /admins в веб-админке.
+async function listAdmins({ limit, offset = 0 } = {}) {
+  const params = [];
+  let sql = `SELECT a.telegram_id, a.telegram_username, a.role, a.group_id, g.name AS group_name, a.added_by, a.created_at
      FROM admins a
      LEFT JOIN client_groups g ON g.id = a.group_id
-     ORDER BY (a.role = 'owner') DESC, a.created_at ASC`
-  );
+     ORDER BY (a.role = 'owner') DESC, a.created_at ASC`;
+  if (limit) {
+    sql += ' LIMIT ? OFFSET ?';
+    params.push(limit, offset);
+  }
+  const [rows] = await pool.query(sql, params);
   return rows;
+}
+
+async function countAdmins() {
+  const [[{ n }]] = await pool.query('SELECT COUNT(*) AS n FROM admins');
+  return n;
 }
 
 async function addAdmin(telegramId, telegramUsername, addedBy) {
@@ -58,4 +69,4 @@ async function ensureOwner(telegramId) {
   );
 }
 
-module.exports = { getAdmin, listAdmins, addAdmin, removeAdmin, setAdminGroup, ensureOwner };
+module.exports = { getAdmin, listAdmins, countAdmins, addAdmin, removeAdmin, setAdminGroup, ensureOwner };

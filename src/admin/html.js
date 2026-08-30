@@ -100,6 +100,14 @@ function layout({ title, active, body, extraHead = '', bodyEnd = '' }) {
   button.icon-danger:hover { background: light-dark(#fbecea, #2a1a17); }
   button.icon-danger:disabled { opacity: .5; cursor: default; }
   .save-status { font-size: 12px; color: light-dark(#146c4c, #3fd8a3); margin-left: 6px; }
+  .pager { display: flex; align-items: center; gap: 12px; margin-top: 14px; font-size: 13px; }
+  .pager-btn {
+    padding: 5px 12px; border-radius: 7px; text-decoration: none;
+    border: 1px solid light-dark(#d8d4c8, #2c332d); color: light-dark(#146c4c, #3fd8a3);
+  }
+  .pager-btn:hover { background: light-dark(#e7f2ec, #22302a); }
+  .pager-disabled { opacity: .4; }
+  .pager-info { color: light-dark(#6b756e, #8fa196); }
 </style>
 ${extraHead}
 </head>

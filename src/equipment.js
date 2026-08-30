@@ -12,9 +12,20 @@ async function createClass(code, name, description) {
   ]);
 }
 
-async function listClasses() {
-  const [rows] = await pool.query('SELECT * FROM equipment_classes ORDER BY name');
+async function listClasses({ limit, offset = 0 } = {}) {
+  const params = [];
+  let sql = 'SELECT * FROM equipment_classes ORDER BY name';
+  if (limit) {
+    sql += ' LIMIT ? OFFSET ?';
+    params.push(limit, offset);
+  }
+  const [rows] = await pool.query(sql, params);
   return rows;
+}
+
+async function countClasses() {
+  const [[{ n }]] = await pool.query('SELECT COUNT(*) AS n FROM equipment_classes');
+  return n;
 }
 
 async function getClassByCode(code) {
@@ -64,16 +75,24 @@ async function findBySourceFile(gymId, sourceFile) {
   return rows[0] || null;
 }
 
-async function listGymEquipment(gymId) {
-  const [rows] = await pool.query(
-    `SELECT e.*, c.name AS class_name, c.code AS class_code
+async function listGymEquipment(gymId, { limit, offset = 0 } = {}) {
+  const params = [gymId];
+  let sql = `SELECT e.*, c.name AS class_name, c.code AS class_code
      FROM gym_equipment e
      LEFT JOIN equipment_classes c ON c.id = e.equipment_class_id
      WHERE e.gym_id = ?
-     ORDER BY e.created_at DESC`,
-    [gymId]
-  );
+     ORDER BY e.created_at DESC`;
+  if (limit) {
+    sql += ' LIMIT ? OFFSET ?';
+    params.push(limit, offset);
+  }
+  const [rows] = await pool.query(sql, params);
   return rows;
+}
+
+async function countGymEquipment(gymId) {
+  const [[{ n }]] = await pool.query('SELECT COUNT(*) AS n FROM gym_equipment WHERE gym_id = ?', [gymId]);
+  return n;
 }
 
 async function getEquipment(id) {
@@ -100,11 +119,13 @@ async function classify(id, classId, name) {
 module.exports = {
   createClass,
   listClasses,
+  countClasses,
   getClassByCode,
   getOrCreateClass,
   addPhoto,
   findBySourceFile,
   listGymEquipment,
+  countGymEquipment,
   getEquipment,
   classify,
 };

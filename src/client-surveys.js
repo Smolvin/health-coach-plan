@@ -30,11 +30,23 @@ async function completeSurveyRound(clientId, round) {
   );
 }
 
-async function listClientSurveys(clientId) {
-  const [rows] = await pool.query('SELECT * FROM client_surveys WHERE client_id = ? ORDER BY round DESC', [
-    clientId,
-  ]);
+// Без limit — вернуть всё (так вызывает бот, ему нужно просканировать все
+// раунды в поисках "in_progress", а не только первую страницу). С limit —
+// для постраничного списка в веб-админке.
+async function listClientSurveys(clientId, { limit, offset = 0 } = {}) {
+  const params = [clientId];
+  let sql = 'SELECT * FROM client_surveys WHERE client_id = ? ORDER BY round DESC';
+  if (limit) {
+    sql += ' LIMIT ? OFFSET ?';
+    params.push(limit, offset);
+  }
+  const [rows] = await pool.query(sql, params);
   return rows;
+}
+
+async function countClientSurveys(clientId) {
+  const [[{ n }]] = await pool.query('SELECT COUNT(*) AS n FROM client_surveys WHERE client_id = ?', [clientId]);
+  return n;
 }
 
 async function getSurveyRound(clientId, round) {
@@ -88,6 +100,7 @@ module.exports = {
   createSurveyRound,
   completeSurveyRound,
   listClientSurveys,
+  countClientSurveys,
   getSurveyRound,
   listAllCompletedRounds,
   copySurveyRoundToClient,

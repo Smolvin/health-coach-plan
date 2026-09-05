@@ -2,7 +2,7 @@ node_modules/
 .DS_Store
 *.log
 _inbox/
-slq_dumps/
+sql_dumps/
 
 # секреты
 .env

@@ -18,6 +18,7 @@ const snapshots = require('../client-snapshots');
 const menuConfig = require('../menu-config');
 const clientSurveys = require('../client-surveys');
 const measurements = require('../measurements');
+const recommendations = require('../recommendations');
 const { setDefaultMenu, syncAllAdminMenus } = require('../menu');
 
 // Только для перезапроса файлов фото у Telegram API (getFileLink) — веб-админка
@@ -418,10 +419,11 @@ app.get(
     if (!client) return res.status(404).send('Клиент не найден');
     const round = Number(req.params.round);
 
-    const [surveyRound, page, total] = await Promise.all([
+    const [surveyRound, page, total, recommendation] = await Promise.all([
       clientSurveys.getSurveyRound(client.id, round),
       Promise.resolve(getPage(req)),
       clients.getAnsweredCount(client.id, round),
+      recommendations.getRecommendation(client.id, round),
     ]);
     if (!surveyRound) return res.status(404).send('Раунд анкеты не найден');
 
@@ -458,8 +460,76 @@ app.get(
         </table>
         </div>
         ${pagerHtml('surveyAnswers', `/clients/${client.id}/surveys/${round}`, page, total)}
+      </div>
+      <div class="card">
+        <h2>Рекомендация</h2>
+        <p class="muted">
+          ${
+            recommendation
+              ? `Подготовлена, обновлена ${fmtDate(recommendation.updated_at)}.`
+              : 'Пока не подготовлена.'
+          }
+        </p>
+        <a href="/clients/${client.id}/surveys/${round}/recommendation">${recommendation ? 'Открыть / отредактировать' : 'Подготовить рекомендацию'} →</a>
       </div>`;
     res.send(layout({ title: `#${client.id} — раунд ${round}`, active: '/clients', body }));
+  })
+);
+
+// Рекомендация (программа тренировок + план питания) по итогам раунда —
+// тренер готовит вручную на основе ответов раунда, правит прямо здесь.
+app.get(
+  '/clients/:id/surveys/:round/recommendation',
+  wrapErrors(async (req, res) => {
+    const client = await clients.getClient(req.params.id);
+    if (!client) return res.status(404).send('Клиент не найден');
+    const round = Number(req.params.round);
+
+    const [surveyRound, recommendation] = await Promise.all([
+      clientSurveys.getSurveyRound(client.id, round),
+      recommendations.getRecommendation(client.id, round),
+    ]);
+    if (!surveyRound) return res.status(404).send('Раунд анкеты не найден');
+
+    const body = `
+      <h2>Рекомендация — <a href="/clients/${client.id}/surveys/${round}">#${client.id} ${escapeHtml(client.name)}, раунд ${round}</a></h2>
+      ${
+        recommendation
+          ? `<p class="muted">Обновлено ${fmtDate(recommendation.updated_at)}.</p>`
+          : '<p class="muted">Ещё не подготовлена — заполни и сохрани форму ниже.</p>'
+      }
+      <form method="post" action="/clients/${client.id}/surveys/${round}/recommendation">
+        <div class="card">
+          <h2>Программа тренировок</h2>
+          <textarea name="trainingPlan" style="min-height:260px">${escapeHtml(recommendation?.training_plan)}</textarea>
+        </div>
+        <div class="card">
+          <h2>План питания</h2>
+          <textarea name="nutritionPlan" style="min-height:220px">${escapeHtml(recommendation?.nutrition_plan)}</textarea>
+        </div>
+        <div class="card">
+          <h2>Заметки тренера</h2>
+          <p class="muted">Открытые вопросы к клиенту, на что обратить внимание при следующей сверке — не показывается клиенту напрямую.</p>
+          <textarea name="notes" style="min-height:120px">${escapeHtml(recommendation?.notes)}</textarea>
+        </div>
+        <div class="actions">
+          <button type="submit">Сохранить</button>
+        </div>
+      </form>`;
+    res.send(layout({ title: `Рекомендация — #${client.id} раунд ${round}`, active: '/clients', body }));
+  })
+);
+
+app.post(
+  '/clients/:id/surveys/:round/recommendation',
+  wrapErrors(async (req, res) => {
+    const round = Number(req.params.round);
+    await recommendations.upsertRecommendation(req.params.id, round, {
+      trainingPlan: req.body.trainingPlan,
+      nutritionPlan: req.body.nutritionPlan,
+      notes: req.body.notes,
+    });
+    res.redirect(`/clients/${req.params.id}/surveys/${round}/recommendation`);
   })
 );
 

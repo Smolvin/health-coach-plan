@@ -18,35 +18,38 @@
 `src/admin/server.js`; сама инфраструктура (nginx/TLS) поверх ничего не
 добавляет).
 
-## 1. Провижининг shared MySQL/MinIO (один раз)
+## 1. Клонирование
 
-Делается со стороны инфраструктурного репозитория — см. свои личные
-заметки за точной командой. Результат — `DB_NAME`/`DB_USER`/`DB_PASSWORD` и
-`MINIO_BUCKET`/`MINIO_ACCESS_KEY`/`MINIO_SECRET_KEY`, сохранить сразу
-(повторно не показывается).
-
-## 2. Клонирование и `.env`
-
-Клонировать репозиторий на сервер (путь/deploy key — см. личные заметки):
+Путь/deploy key — см. личные заметки:
 
 ```bash
 git clone <this-repo-url>
-cd health-coach-plan
-cp .env.example .env
 ```
 
-Заполнить `.env` (корневой, НЕ `docker/prod/.env` — `docker-compose.yml`
-здесь ссылается на `../../.env`):
+## 2. `.env` — заполняется скриптом со стороны инфраструктурного репозитория
+
+Этот репозиторий сам не хранит и не генерирует shared-креды (MySQL/MinIO
+этого VPS) — начальная настройка `.env` идёт из инфраструктурного
+репозитория (у него креды root-уровня, он знает, как безопасно провижинить
+БД/bucket только для этого проекта). Со стороны того репозитория (см. его
+`docs/runbook.md#провижининг-shared-mysqlminio-для-внешнего-проекта`):
+
+```bash
+./scripts/init-project-env.sh /path/to/health-coach-plan health_coach_plan
+```
+
+Копирует `.env.example` → `.env` (если ещё нет) и сам подставляет
+`DB_HOST`/`DB_PORT`/`DB_NAME`/`DB_USER`/`DB_PASSWORD` и
+`MINIO_ENDPOINT`/`MINIO_PORT`/`MINIO_BUCKET`/`MINIO_ACCESS_KEY`/
+`MINIO_SECRET_KEY`. Повторный запуск безопасен — не тронет уже
+сгенерированные пароль/ключ.
+
+Остаётся дозаполнить руками (скрипт этого не знает — специфично для
+проекта):
 
 - `BOT_TOKEN`, `OWNER_TELEGRAM_ID` — как в локальной разработке.
 - `ADMIN_WEB_USER`/`ADMIN_WEB_PASSWORD` — реальный пароль для прод-админки
   (не оставлять пустым — приложение само откажется стартовать без пароля).
-- `DB_HOST=mysql`, `DB_PORT=3306`, `DB_NAME`/`DB_USER`/`DB_PASSWORD` — из
-  шага 1.
-- `MINIO_ENDPOINT=minio`, `MINIO_PORT=9000`, `MINIO_USE_SSL=false`,
-  `MINIO_BUCKET`/`MINIO_ACCESS_KEY`/`MINIO_SECRET_KEY` — из шага 1 (если
-  провижининг вывел `MINIO_ENDPOINT=host:port` одной строкой — этому
-  проекту нужно раздельно `MINIO_ENDPOINT`/`MINIO_PORT`, разбить руками).
 - `IMPORT_ASSETS_DIR` — не используется в проде (только ручной
   `scripts/import_media.js`), можно оставить пустым/дефолт.
 

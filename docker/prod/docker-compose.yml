@@ -1,0 +1,52 @@
+# Прод-деплой — см. docs/vps-deploy.md (публичная версия) и
+# docs/vps-deploy.notes.md (gitignored, реальные домен/хост/пути).
+#
+# bot — Telegram long polling (см. src/bot.js), исходящие соединения only,
+# наружу НЕ смотрит вообще — не подключён к apps_edge_internal.
+# admin — единственный публичный компонент, уже закрыт HTTP Basic Auth на
+# уровне самого приложения (ADMIN_WEB_USER/ADMIN_WEB_PASSWORD, см.
+# src/admin/server.js) — внешний реверс-прокси поверх ничего не добавляет,
+# кроме TLS/rate-limit.
+# Оба сервиса — один и тот же образ (Dockerfile в корне репозитория),
+# отличается только command, как и в локальном docker-compose.yml.
+
+networks:
+  apps_edge_internal:
+    name: apps_edge_internal
+    external: true
+  # Доступ к shared MySQL/MinIO этого VPS (НЕ то же самое, что
+  # apps_edge_internal — та только пробрасывает HTTP снаружи).
+  prod_data_edge:
+    name: prod_data_edge
+    external: true
+
+services:
+  bot:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    container_name: health-coach-bot
+    env_file: ../../.env
+    restart: unless-stopped
+    networks: [prod_data_edge]
+    mem_limit: 256m
+
+  admin:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    container_name: health-coach-admin
+    command: ["node", "src/admin/server.js"]
+    env_file: ../../.env
+    restart: unless-stopped
+    networks: [prod_data_edge, apps_edge_internal]
+    healthcheck:
+      # nc, не wget/curl — админка целиком за Basic Auth, простая проверка
+      # "порт открыт" не требует разбираться с кредами внутри healthcheck.
+      # 4000 — дефолт ADMIN_PORT из .env.example; если в реальном .env
+      # ADMIN_PORT переопределён, поправить и здесь.
+      test: ["CMD", "nc", "-z", "127.0.0.1", "4000"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    mem_limit: 256m

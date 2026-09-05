@@ -1,21 +1,27 @@
 # Прод-деплой — см. docs/vps-deploy.md (публичная версия) и
 # docs/vps-deploy.notes.md (gitignored, реальные домен/хост/пути).
 #
+# Общий образ рантайма (node:20-alpine) + код монтируется с хоста, а не
+# копируется в образ на этапе сборки — тот же паттерн, что уже используют
+# node-app/php-fpm/python-worker в docker/prod инфраструктурного
+# репозитория и pet-проекты в его docker/local. Плюсы именно для этого
+# проекта: `git pull` + `docker compose restart` применяет новый код без
+# `docker build` (быстрее, не нужен образ/registry на проект); заодно
+# полностью снимает проблему "забыли скопировать в образ ещё один каталог"
+# (см. ROADMAP.md/CHANGELOG.md — так уже случилось с migrations/).
+# `node_modules` — тоже на хосте, не в образе: см. docs/vps-deploy.md,
+# шаг «первый раз/при обновлении package.json».
+#
 # bot — Telegram long polling (см. src/bot.js), исходящие соединения only,
 # наружу НЕ смотрит вообще — не подключён к apps_edge_internal.
 # admin — единственный публичный компонент, уже закрыт HTTP Basic Auth на
 # уровне самого приложения (ADMIN_WEB_USER/ADMIN_WEB_PASSWORD, см.
 # src/admin/server.js) — внешний реверс-прокси поверх ничего не добавляет,
 # кроме TLS/rate-limit.
-# Оба сервиса — один и тот же образ (Dockerfile в корне репозитория),
-# отличается только command, как и в локальном docker-compose.yml.
 #
 # name: обязателен — без него Compose берёт имя проекта из имени папки
-# (здесь "prod", т.к. файл лежит в docker/prod/), а такая же папка есть у
-# каждого внешнего проекта на этом VPS (dev-portfolio и т.д.) — без явного
-# имени Compose считает их контейнеры частью ОДНОГО проекта ("prod") и
-# путает: `docker compose run` в одном проекте ругается на контейнеры
-# другого как на orphan. Подтверждено реальным инцидентом (2026-09-05).
+# (здесь "prod", как у любого другого внешнего проекта на этом VPS) —
+# подтверждено реальным инцидентом (2026-09-05, см. CHANGELOG.md).
 name: health-coach-plan
 
 networks:
@@ -30,22 +36,25 @@ networks:
 
 services:
   bot:
-    build:
-      context: ../..
-      dockerfile: Dockerfile
+    image: node:20-alpine
     container_name: health-coach-bot
+    working_dir: /app
+    volumes:
+      - ../..:/app
     env_file: ../../.env
+    command: ["node", "src/bot.js"]
     restart: unless-stopped
     networks: [prod_data_edge]
     mem_limit: 256m
 
   admin:
-    build:
-      context: ../..
-      dockerfile: Dockerfile
+    image: node:20-alpine
     container_name: health-coach-admin
-    command: ["node", "src/admin/server.js"]
+    working_dir: /app
+    volumes:
+      - ../..:/app
     env_file: ../../.env
+    command: ["node", "src/admin/server.js"]
     restart: unless-stopped
     networks: [prod_data_edge, apps_edge_internal]
     healthcheck:

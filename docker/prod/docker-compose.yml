@@ -13,7 +13,13 @@
 # шаг «первый раз/при обновлении package.json».
 #
 # bot — Telegram long polling (см. src/bot.js), исходящие соединения only,
-# наружу НЕ смотрит вообще — не подключён к apps_edge_internal.
+# наружу НЕ смотрит (входящих нет) — не подключён к apps_edge_internal. Но
+# "исходящие соединения" здесь в буквальном смысле — реальный интернет
+# (api.telegram.org), а prod_data_edge (см. ниже) internal:true, без
+# шлюза наружу вообще. Подключение только к ней ломает бота на
+# EAI_AGAIN api.telegram.org — подтверждено реальным деплоем. Сеть
+# `egress` ниже — обычный (не internal) bridge, только для этого
+# compose-проекта, даёт исходящий интернет, не более того.
 # admin — единственный публичный компонент, уже закрыт HTTP Basic Auth на
 # уровне самого приложения (ADMIN_WEB_USER/ADMIN_WEB_PASSWORD, см.
 # src/admin/server.js) — внешний реверс-прокси поверх ничего не добавляет,
@@ -33,6 +39,11 @@ networks:
   prod_data_edge:
     name: prod_data_edge
     external: true
+  # Обычный bridge (НЕ internal) — только для исходящего интернета боту
+  # (Telegram API). Локальная для этого compose-проекта, не shared/external
+  # — ни с чем другим её не нужно объединять.
+  egress:
+    driver: bridge
 
 services:
   bot:
@@ -44,7 +55,7 @@ services:
     env_file: ../../.env
     command: ["node", "src/bot.js"]
     restart: unless-stopped
-    networks: [prod_data_edge]
+    networks: [prod_data_edge, egress]
     mem_limit: 256m
 
   admin:
